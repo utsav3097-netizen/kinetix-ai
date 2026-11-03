@@ -1,0 +1,51 @@
+.planning-page { display: grid; gap: 28px; padding: 48px 0 64px; min-width: 0; }
+.planning-page > *, .planning-sections > *, .planning-detail > * { min-width: 0; }
+.planning-page .dashboard-intro { margin: 0; }
+.planning-page .dashboard-intro p { max-width: 800px; color: var(--color-muted); line-height: 1.8; }
+.planning-page h3 { margin: 0 0 12px; }
+.planning-page h4 { margin: 18px 0 10px; }
+.planning-page .connection-card p + p, .planning-page .connection-card p + form, .planning-page .connection-card p + button { margin-top: 12px; }
+.planning-page .connection-card p + .planning-table-wrap, .planning-page .connection-card p + .primary-button { margin-top: 18px; }
+.planning-sections, .planning-detail { display: grid; gap: 24px; }
+.planning-paths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.planning-path { display: flex; flex-direction: column; gap: 10px; }
+.planning-path .secondary-button { align-self: flex-start; margin-top: auto; }
+.planning-path--selected { border-color: var(--color-cyan); }
+.planning-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 16px; margin: 16px 0; }
+.planning-page fieldset.reference-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.planning-record-list { list-style: none; padding: 0; margin: 0; }
+.planning-record-list > li { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px 0; border-bottom: 1px solid var(--color-border); }
+.planning-record-list > li > div { min-width: 0; overflow-wrap: anywhere; }
+.planning-record-list button { flex-shrink: 0; }
+.planning-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 20px; font-size: 13px; }
+.planning-chart { height: 320px; width: 100%; min-width: 0; margin: 20px 0; }
+.planning-table-wrap { max-width: 100%; overflow-x: auto; margin: 12px 0; border: 1px solid var(--color-border); border-radius: 10px; }
+.planning-table-wrap:focus-visible { outline: 2px solid var(--color-cyan); outline-offset: 3px; }
+.planning-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+.planning-table-wrap th, .planning-table-wrap td { padding: 14px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+.planning-table-wrap thead th { color: var(--color-muted); font-weight: 500; }
+.planning-table-wrap tbody th { font-weight: 600; }
+.planning-prescription { display: grid; gap: 5px; min-width: 230px; margin-bottom: 14px; }
+.planning-prescription:last-child { margin-bottom: 0; }
+.planning-exercise { padding: 16px 0; border-bottom: 1px solid var(--color-border); }
+.planning-meals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 18px; }
+.planning-meals article { min-width: 0; padding: 16px; border: 1px solid var(--color-border); border-radius: 12px; }
+.planning-meals h4 { margin-top: 0; }
+.planning-meals ul { padding-left: 18px; }
+.planning-meals li { margin-bottom: 14px; overflow-wrap: anywhere; }
+.planning-sample-total { margin-top: 20px !important; }
+.planning-page .detail-note { display: block; color: var(--color-muted); font-size: 12px; margin-top: 5px; line-height: 1.7; }
+.planning-edit-day { border: 1px solid var(--color-border); border-radius: 12px; margin: 24px 0; padding: 16px; min-width: 0; }
+.planning-edit-exercise { border: 0; border-top: 1px solid var(--color-border); padding: 16px 0 0; margin: 18px 0 0; min-width: 0; }
+.planning-editor legend { padding: 0 8px; font-weight: 600; }
+.planning-page .error-notice { margin-top: 16px; }
+@media (max-width: 700px) {
+  .planning-paths { grid-template-columns: 1fr; }
+  .planning-record-list > li { align-items: flex-start; flex-direction: column; }
+  .planning-page { padding-top: 28px; }
+  .planning-page .connection-card { padding: 20px 16px; }
+  .planning-chart { height: 290px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .planning-page *, .planning-page *::before, .planning-page *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
