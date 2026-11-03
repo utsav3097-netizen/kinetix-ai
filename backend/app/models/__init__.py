@@ -4,8 +4,10 @@ from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.admin import Announcement, AuditRecord, SystemSetting
 from app.models.ai import AIInsight
 from app.models.athlete import AthleteProfile, WeightCheckIn
+from app.models.coach import CoachConversation, CoachMessage
 from app.models.identity import AuthRateBucket, RefreshSession, RefreshToken, User
 from app.models.nutrition import Meal, MealItem, NutritionDay, NutritionSourceRecord, WaterEntry
 from app.models.reference import Exercise, ExerciseMuscle, Food, MuscleGroup
@@ -14,8 +16,10 @@ from app.models.planning import ActiveTrainingPlan, PlanDraft, Report, TrainingP
 
 __all__ = [
     "AIInsight",
-    "AthleteProfile", "AuthRateBucket", "Exercise", "ExerciseMuscle", "Food", "MuscleGroup",
-    "RefreshSession", "RefreshToken", "SystemSchema", "User", "WeightCheckIn",
+    "Announcement", "AuditRecord",
+    "AthleteProfile", "AuthRateBucket", "CoachConversation", "CoachMessage",
+    "Exercise", "ExerciseMuscle", "Food", "MuscleGroup",
+    "RefreshSession", "RefreshToken", "SystemSchema", "SystemSetting", "User", "WeightCheckIn",
     "WorkoutExercise", "WorkoutSession", "WorkoutSet", "WorkoutSourceRecord",
     "Meal", "MealItem", "NutritionDay", "NutritionSourceRecord", "WaterEntry",
     "ActiveTrainingPlan", "PlanDraft", "Report", "TrainingPlanVersion",

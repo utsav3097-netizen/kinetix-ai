@@ -1,0 +1,21 @@
+.page-shell { width: min(100%, 1280px); margin: 0 auto; padding: 64px 0 80px; }
+.page-shell > h1 { margin-bottom: 36px; }
+.page-shell > .connection-card { margin-top: 24px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 18px; }
+.form-grid input, .form-grid select, .form-grid textarea { width: 100%; min-width: 0; min-height: 46px; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px 12px; background: #090a0fcc; color: var(--color-foreground); }
+.form-grid textarea { min-height: 96px; resize: vertical; }
+.form-grid button { align-self: end; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin: 22px 0 0; }
+.metric-grid > div { border: 1px solid var(--color-border); border-radius: 12px; padding: 16px; background: #090a0f66; }
+.metric-grid dt { color: var(--color-muted); font-size: 12px; }
+.metric-grid dd { margin: 7px 0 0; color: var(--color-primary); font-size: 22px; font-weight: 700; }
+.page-shell ul { padding-left: 20px; color: var(--color-muted); line-height: 1.8; }
+.page-shell li { margin: 8px 0; }
+@media (max-width: 650px) {
+  .page-shell { padding: 40px 0 56px; }
+  .page-shell .connection-card { padding: 20px 16px; }
+  .form-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-shell *, .page-shell *::before, .page-shell *::after { animation: none !important; transition: none !important; }
+}

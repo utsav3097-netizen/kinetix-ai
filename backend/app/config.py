@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     refresh_token_days: int = Field(default=30, ge=1, le=90)
     admin_email: str | None = None
     gemini_api_key: SecretStr | None = None
-    gemini_model: str | None = "gemini-3.8-flash"
+    gemini_model: str | None = "gemini-3.1-flash-lite"
     openai_api_key: SecretStr | None = None
     openai_model: str | None = "gpt-5.6-terra"
     cors_origins: Annotated[list[str], NoDecode] = Field(

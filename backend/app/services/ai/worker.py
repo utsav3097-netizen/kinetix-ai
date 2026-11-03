@@ -12,9 +12,9 @@ from app.ai_schemas import ExtractedMeal, SetInsight
 from app.config import Settings
 from app.models import AIInsight
 from app.models.identity import new_id, utc_now
+from app.services.admin_policy import configured_setting
 from app.services.ai.meals import MEAL_PROMPT, build_draft, validate_extraction
-from app.services.ai.providers import AIUnavailable, UNAVAILABLE_REASON, structured_generate
-
+from app.services.ai.providers import UNAVAILABLE_REASON, structured_generate
 WORKOUT_PROMPT = """Provide short non-medical training commentary based only on this recorded snapshot.
 The comparison and deterministic progression are authoritative. next_action MUST equal
 progression.state. Never prescribe a different load, repetitions, volume or progression.
@@ -75,12 +75,18 @@ async def process_one(sessions, settings: Settings, *, client=None) -> bool:
             kind, owner_id, context = job.kind, job.owner_id, job.context
         if kind == "meal_parse":
             provider_context = {"text": context["request"]["text"], "foods": context["foods"]}
-            generated = await structured_generate(ExtractedMeal, MEAL_PROMPT, provider_context, settings=settings,
+            with sessions() as db:
+                configured = configured_setting(db, "meal_prompt")
+            prompt = f"{configured}\n\n{MEAL_PROMPT}" if isinstance(configured, str) else MEAL_PROMPT
+            generated = await structured_generate(ExtractedMeal, prompt, provider_context, settings=settings,
                 client=client, validate=lambda data: validate_extraction(data, provider_context["text"]))
             with sessions() as db:
                 result = build_draft(db, owner_id, context, generated.data)
         else:
-            generated = await structured_generate(SetInsight, WORKOUT_PROMPT, context, settings=settings,
+            with sessions() as db:
+                configured = configured_setting(db, "coach_prompt")
+            prompt = f"{configured}\n\n{WORKOUT_PROMPT}" if isinstance(configured, str) else WORKOUT_PROMPT
+            generated = await structured_generate(SetInsight, prompt, context, settings=settings,
                 client=client, validate=lambda data: validate_workout(data, context))
             result = generated.data
         # Validate one final time before serialization; never persist provider envelopes.

@@ -11,8 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.admin_routes import admin_router, announcement_router
 from app.ai_routes import router as ai_router
 from app.auth_routes import router as auth_router
+from app.coach_routes import router as coach_router
 from app.config import BACKEND_DIR, settings
 from app.dashboard_routes import router as dashboard_router
 from app.database import SessionLocal, engine, get_db
@@ -67,6 +69,9 @@ app.include_router(workout_router)
 app.include_router(nutrition_router)
 app.include_router(report_router)
 app.include_router(plan_router)
+app.include_router(coach_router)
+app.include_router(admin_router)
+app.include_router(announcement_router)
 
 
 @app.get("/api/v1/health", tags=["health"])

@@ -18,6 +18,8 @@ export type ApiOptions = Omit<RequestInit, 'body' | 'credentials'> & {
   json?: unknown;
   /** Public endpoints must not attach a bearer token or trigger a refresh. */
   auth?: boolean;
+  /** Extend the default deadline only for provider-backed requests. */
+  timeoutMs?: number;
 };
 
 export class ApiError extends Error {
@@ -74,7 +76,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) {
     throw new Error('API paths must be relative to /api/v1.');
   }
-  const { auth = true, json, ...request } = options;
+  const { auth = true, json, timeoutMs = 15_000, ...request } = options;
   const epoch = authEpoch;
   const body = json === undefined ? undefined : JSON.stringify(json);
   let bearerUsed: string | undefined;
@@ -86,7 +88,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     bearerUsed = auth ? session?.access_token : undefined;
     if (bearerUsed) headers.set('Authorization', `Bearer ${bearerUsed}`);
     else headers.delete('Authorization');
-    const deadline = AbortSignal.timeout(15_000);
+    const deadline = AbortSignal.timeout(timeoutMs);
     const signal = request.signal ? AbortSignal.any([request.signal, deadline]) : deadline;
     try {
       return await fetch(`/api/v1${path}`, { ...request, headers, body, signal, credentials: 'include' });

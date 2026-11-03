@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import { LogOut, ShieldCheck, UserRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Announcements } from '../admin/Announcements';
 import { ProfileSummary, WeightCheckIns } from '../profile/ProfileDashboard';
 import { useProfile } from '../profile/profile';
 import { useAuth } from '../auth/AuthProvider';
 import { TargetPanel } from '../dashboard/TargetPanel';
-
 export function Dashboard() {
   const { user, logout, revokeAllSessions } = useAuth();
   const { data } = useProfile();
@@ -38,6 +38,7 @@ export function Dashboard() {
         <p className="intro-copy">Your athlete baseline, daily energy targets and dated weight measurements, together in one place.</p>
         <Link to="/library" className="home-link">Browse your exercise and food library</Link>
       </section>
+      <Announcements />
       <div className="account-grid">
         <TargetPanel />
         <ProfileSummary profile={profile} />

@@ -17,12 +17,12 @@ from app.models import MuscleGroup
 from app.models.identity import new_id, utc_now
 from app.models.workout import WorkoutExercise, WorkoutSession, WorkoutSet, WorkoutSourceRecord
 from app.reference_service import get_exercise
+from app.services.admin_policy import progression_policy
 from app.services.ai.context import capture_context
 from app.services.ai.jobs import enqueue_workout, latest
 from app.services.fitness_algorithms import (
-    EffectiveLoadInput, FatigueInput, OneRepMaxInput, ProgressionInput, ProgressionResult,
-    ProgressionSet, effective_load, estimate_one_rep_max, fatigue_index,
-    recommend_progression, weekly_volume_landmark,
+    EffectiveLoadInput, FatigueInput, OneRepMaxInput, ProgressionInput, ProgressionPolicy, ProgressionResult,
+    ProgressionSet, effective_load, estimate_one_rep_max, fatigue_index, recommend_progression, weekly_volume_landmark,
 )
 from app.workout_schemas import BlockCreate, BlockInput, PageQuery, SessionInput, SessionQuery, SetInput, SetView
 
@@ -369,6 +369,7 @@ def block_progression(db: Session, session: WorkoutSession, block: WorkoutExerci
         classification=block.exercise_snapshot["classification"],
         working_sets=[ProgressionSet(reps=row.repetitions, rpe=row.rpe, rir=row.rir) for row in working],
         previous_working_sets=previous,
+        policy=ProgressionPolicy.model_validate(progression_policy(db)),
     ))
 
 

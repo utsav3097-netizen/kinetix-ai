@@ -2,6 +2,8 @@ import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { Link, NavLink, Route, Routes } from 'react-router-dom';
 import { ApiHealth } from './components/ApiHealth';
 import { KinetixLogo } from './components/KinetixLogo';
+import { AdminPage } from './features/admin/AdminPage';
+import { CoachPanel } from './features/coach/CoachPanel';
 import { Dashboard } from './features/account/Dashboard';
 import { AuthPage } from './features/auth/AuthPage';
 import { useAuth } from './features/auth/AuthProvider';
@@ -53,7 +55,7 @@ export default function App() {
         </Link>
         {ready ? (
           <nav className="header-nav" aria-label="Main navigation">
-            {user ? <><NavLink to="/" end>Dashboard</NavLink><NavLink to="/workouts">Workouts</NavLink><NavLink to="/nutrition">Nutrition</NavLink><NavLink to="/reports">Reports</NavLink><NavLink to="/plans">Plans</NavLink><NavLink to="/onboarding">Profile</NavLink><NavLink to="/library">Library</NavLink></> : (
+            {user ? <><NavLink to="/" end>Dashboard</NavLink><NavLink to="/workouts">Workouts</NavLink><NavLink to="/nutrition">Nutrition</NavLink><NavLink to="/reports">Reports</NavLink><NavLink to="/plans">Plans</NavLink><NavLink to="/onboarding">Profile</NavLink><NavLink to="/library">Library</NavLink>{user.role === 'admin' && <NavLink to="/admin">Admin</NavLink>}</> : (
               <>
                 <NavLink to="/login">Log in</NavLink>
                 <NavLink to="/register">Register</NavLink>
@@ -70,6 +72,7 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute />}>
             <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/admin" element={<AdminPage />} />
             <Route element={<RequireOnboarding />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/library" element={<LibraryPage />} />
@@ -88,6 +91,7 @@ export default function App() {
           } />
         </Routes>
       )}
+      {user && <CoachPanel />}
       <footer className="site-footer"><span>KINETIX AI</span><span>Precision. Purpose. Progress.</span></footer>
     </div>
   );

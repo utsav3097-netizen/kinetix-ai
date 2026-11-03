@@ -95,8 +95,26 @@ Validation failures return field locations/messages without echoing submitted va
 
 Set saves/corrections and completed exercise blocks enqueue private, source-linked `AIInsight` jobs. The API process runs the durable worker; start it normally with Uvicorn after migrations. The UI polls pending jobs, shows validated results or explicit unavailability, and keeps deterministic comparisons available in either case. Interrupted calls become unavailable rather than being silently billed again; retry is an explicit user action.
 
-Gemini uses the [Interactions API](https://ai.google.dev/gemini-api/docs/interactions-overview) with `store: false`; OpenAI fallback uses [Responses structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), also without provider storage. Configure server-only `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. Defaults are `gemini-3.8-flash` and `gpt-5.6-terra`; access and quotas depend on your provider account. During local verification Flash returned high-demand errors, Pro had no free-tier token allowance, and `gemini-3.1-flash-lite` returned a validated extraction but also intermittent high-demand errors. The current local smoke server overrides the Gemini model to Flash-Lite; `.env.example` retains the requested Flash default.
+Gemini uses the [Interactions API](https://ai.google.dev/gemini-api/docs/interactions-overview) with `store: false`; OpenAI fallback uses [Responses structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), also without provider storage. Configure server-only `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. Defaults are the provider-verified `gemini-3.1-flash-lite` and `gpt-5.6-terra`; model access and quotas still depend on your provider account.
+
+The persistent coach uses a 185-second client deadline so Gemini and the configured fallback can each use their bounded 90-second provider request. While waiting, the UI shows the submitted turn and response state, scrolls to the newest message, and refreshes persisted history after a dropped response. In the verified local setup, `gemini-3.1-flash-lite` returned a real training-summary reply; quotas remain provider-account dependent.
 
 Provider decoding enforces JSON structure; server Pydantic validation enforces all bounds and domain rules before storage. Gemini's constrained decoder rejects large bounded schemas, so those value bounds are applied server-side rather than sent to its decoder. Provider error bodies, keys, reasoning blocks, and private context are not returned by insight endpoints.
 
 Natural-language meals produce an editable draft only. Foods must match the visible catalog. Explicit metric amounts can resolve automatically; counts such as “3 eggs” or “1 scoop” cannot invent a gram weight. Resolve or explicitly remove every uncertain item, review the draft, then save through the normal meal endpoint. Parsing alone never changes intake totals.
+
+## Reports and versioned plans
+
+`/reports` stores immutable owner-scoped snapshots of observed training, dated weight, nutrition coverage, strength curves, muscle-volume landmarks, and fatigue signals. Opening reports or the dashboard materializes the latest completed weekly and configured analysis period; it does not run a background scheduler. Explicit rolling-window snapshots are always new records. Later source corrections cannot rewrite a saved report.
+
+`/plans` generates a deterministic seven-day draft from a selected path and available history. Insufficient history is labeled as a conservative assessment. Editing creates a new draft; accepting requires an explicit user action and creates an immutable, versioned active plan. Existing nutrition days retain their saved targets; new days inherit the active accepted version.
+
+## Persistent coach
+
+The authenticated coach is available from the shell and stores owner-scoped conversation history. Context is minimized server-side to the profile’s non-identifying measurements, the last 14 training days and recovery signals, recent PRs, the last 7 nutrition days, phase, and active plan. Pain and injury questions receive non-diagnostic safety guidance.
+
+Plan, workout, and meal changes are typed proposals. The client shows exact proposed values and no mutation occurs until the athlete confirms. Confirmation revalidates ownership, target revision, and the existing domain endpoint; stale proposals expire. Provider failure leaves deterministic data unchanged.
+
+## Administration and announcements
+
+Administrators use `/admin` for server-authorized global exercise and food management, validated AI prompt/progression settings, scheduled announcements, aggregate analytics, health status, and paginated append-only audit history. Admin authorization is enforced by the persisted role on every endpoint. The UI never exposes credentials, provider tokens, or private cross-athlete AI context. Athletes see only currently scheduled public announcements through `/api/v1/announcements`.
