@@ -59,7 +59,7 @@ def test_targets_return_exact_contract_and_recomp_training_rest_energy(dashboard
     assert training.status_code == rest.status_code == 200
     assert training.headers["cache-control"] == "no-store"
     data, rest_data = training.json(), rest.json()
-    assert set(data) == {"bmr_kcal", "tdee_kcal", "phase", "training_day", "macros", "protein_range_g", "disclaimer"}
+    assert set(data) == {"bmr_kcal", "tdee_kcal", "phase", "training_day", "macros", "protein_range_g", "disclaimer", "plan_version_id"}
     assert data["bmr_kcal"] == 1780
     assert data["tdee_kcal"] == pytest.approx(2848)
     assert data["phase"] == "body_recomposition"

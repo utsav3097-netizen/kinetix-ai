@@ -21,7 +21,8 @@ function ReportsContent() {
   const [params, setParams] = useSearchParams();
   const [offset, setOffset] = useState(0);
   const profile = useProfile();
-  const [weeks, setWeeks] = useState(profile.data?.profile?.analysis_weeks ?? 1);
+  const [chosenWeeks, setWeeks] = useState<number | null>(null);
+  const weeks = chosenWeeks ?? profile.data?.profile?.analysis_weeks ?? 1;
   const [endDate, setEndDate] = useState(utcToday());
   const list = useReports(offset);
   const selected = useReport(params.get('id') ?? '');

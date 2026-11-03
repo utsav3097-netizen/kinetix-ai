@@ -1,5 +1,5 @@
 """Request-materialized period reports and explicitly requested immutable snapshots."""
-from datetime import timedelta
+from datetime import timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -30,10 +30,14 @@ def owned(db, model, owner_id, record_id):
     return row
 
 
+def _aware(value):
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
 def summary(row):
     trend = row.data["nutrition"]
     return {"id": row.id, "kind": row.kind, "window_start": row.window_start, "window_end": row.window_end,
-            "created_at": row.created_at, "revision": row.revision,
+            "created_at": _aware(row.created_at), "revision": row.revision,
             "macro_adherence_score": trend["macro_adherence_score"],
             "logged_training_days": row.data["logged_training_days"], "logged_nutrition_days": trend["logged_days"],
             "expected_days": trend["expected_days"]}

@@ -1,8 +1,7 @@
 """Deterministic seven-day prescriptions; commands flush and caller commits."""
 from collections import defaultdict
 from copy import deepcopy
-from datetime import timedelta
-
+from datetime import timedelta, timezone
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
 
@@ -237,10 +236,14 @@ def accept_draft(db, profile, draft_id):
     return version
 
 
+def _aware(value):
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
 def draft_summary(row):
     data = row.data
     return {"id": row.id, "path": data["path"], "title": data["title"], "starts_on": data["days"][0]["date"],
-        "ends_on": data["days"][-1]["date"], "assessment_required": data["assessment_required"], "created_at": row.created_at,
+        "ends_on": data["days"][-1]["date"], "assessment_required": data["assessment_required"], "created_at": _aware(row.created_at),
         "parent_version_id": row.parent_version_id, "based_on_draft_id": row.based_on_draft_id}
 
 
@@ -251,7 +254,7 @@ def draft_view(row):
 def version_view(db, row):
     draft = owned(db, PlanDraft, row.owner_id, row.draft_id)
     data = draft.data
-    return {"id": row.id, "version": row.version, "draft_id": row.draft_id, "accepted_at": row.accepted_at,
+    return {"id": row.id, "version": row.version, "draft_id": row.draft_id, "accepted_at": _aware(row.accepted_at),
             "title": data["title"], "path": data["path"], "starts_on": data["days"][0]["date"],
             "ends_on": data["days"][-1]["date"], "data": data}
 
