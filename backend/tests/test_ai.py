@@ -145,6 +145,37 @@ def test_interrupted_lease_is_not_billed_again(ai, identity):
     result = client.get('/api/v1/workouts/insights/'+job_id, headers=owner).json()
     assert result["status"] == "unavailable" and "interrupted" in result["reason"]
 
+def test_cancelling_inflight_worker_finalizes_claim_immediately(ai, identity, monkeypatch):
+    from app.models import AIInsight
+    from app.services.ai import worker
+
+    client, (owner, _), exercises = ai
+    session = create_workout(client, owner)
+    block = add_block(client, owner, session, exercises["Pull-up"])
+    saved = add_set(client, owner, session, block)
+    job_id = saved["exercises"][0]["sets"][0]["insight_id"]
+    provider_started = asyncio.Event()
+
+    async def wait_for_shutdown(*args, **kwargs):
+        provider_started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(worker, "structured_generate", wait_for_shutdown)
+
+    async def cancel_worker():
+        task = asyncio.create_task(worker.process_one(identity.sessions, identity.settings))
+        await asyncio.wait_for(provider_started.wait(), timeout=5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(cancel_worker())
+    with identity.sessions() as db:
+        job = db.get(AIInsight, job_id)
+        assert job.status == "unavailable"
+        assert "interrupted" in job.reason
+        assert job.claim_token is None and job.lease_expires_at is None
+
 
 def test_parser_keeps_portions_and_unknown_food_unresolved_without_saving(ai, identity):
     from app.services.ai.worker import process_one
