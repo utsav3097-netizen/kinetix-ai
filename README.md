@@ -2,6 +2,12 @@
 
 Single-deployment React/Vite client and FastAPI API. Backend owns all calculations and authorization.
 
+## Public website
+
+Anonymous visitors at `/` see the KINETIX AI landing page, with an original inline SVG training scene, four feature panels, a numbered record-to-decision walkthrough, and links to the existing `/login` and `/register` forms. Signed-in visitors keep the athlete dashboard at `/`, with incomplete profiles redirected to onboarding; protected routes and persisted-role administrator authorization are unchanged.
+
+The landing page and its GSAP/ScrollTrigger animations load only when the public page mounts. Native scrolling drives subtle hero parallax, the editorial ticker, chapter reveals, and reading progress; reduced-motion preferences leave all content visible without animation. No remote image assets are required. The same frontend build is served by FastAPI in the existing single-origin container—no separate marketing host is needed.
+
 ## Local development
 
 Python 3.13 and Node.js 22+. Run commands from the project root unless noted.
@@ -24,24 +30,21 @@ npm ci
 npm run dev
 ```
 
-Visit http://localhost:5173. For a single-process local deployment, run `npm run build` in frontend, then start the backend and visit http://127.0.0.1:8000. API schema: `/api/docs`. Health: `/api/v1/health`.
+Visit http://localhost:5173. For a single-process local deployment, run `npm run build` in frontend, then start the backend and visit http://127.0.0.1:8000. API schema: `/api/docs`. Liveness: `/api/v1/health/live`; database readiness: `/api/v1/health`.
 
 Copy `.env.example` to `backend/.env` for local configuration. Set a random JWT_SECRET of at least 32 characters to keep sessions across restarts. SQLite is allowed only locally. API credentials remain on the server; never prefix them with VITE_.
 
 ## PostgreSQL deployment
 
-Copy `.env.example` to root `.env`. Set JWT_SECRET, POSTGRES_PASSWORD, ADMIN_EMAIL and CORS_ORIGINS to explicit HTTPS origins (or `[]` for same-origin only). Place the service behind HTTPS; production refresh cookies are Secure.
+Copy `.env.example` to root `.env`. Set JWT_SECRET, POSTGRES_PASSWORD, and CORS_ORIGINS to explicit HTTPS origins (or `[]` for same-origin only). Place the service behind HTTPS; production refresh cookies are Secure.
 
-Use a random URL-safe database password (for example, generate it with Python's `secrets.token_urlsafe(32)`). Build and provision the administrator before opening the application port:
+Use a random URL-safe database password (for example, generate it with Python's `secrets.token_urlsafe(32)`). Start Compose; its one-shot migration service runs `alembic upgrade head` and idempotent seed data before the web app starts:
 
 ```sh
-docker compose build app
-docker compose up -d db
-docker compose run --rm app sh -c 'alembic upgrade head && python -m app.cli create-user YOUR_ADMIN_EMAIL --role admin'
-docker compose up -d app
+docker compose up --build -d
 ```
 
-The app container runs migrations and serves the compiled client. PostgreSQL is mandatory outside local development. Do not expose the database port. Back up the database volume.
+The web container does not run schema changes. PostgreSQL is mandatory outside local development. Do not expose the database port. Back up the database volume. The local Compose app keeps the AI queue worker enabled unless `RUN_AI_WORKER=false` is explicitly configured.
 
 ## Accounts and administrator bootstrap
 
@@ -93,7 +96,7 @@ Validation failures return field locations/messages without echoing submitted va
 
 ## Asynchronous AI and editable meal drafts
 
-Set saves/corrections and completed exercise blocks enqueue private, source-linked `AIInsight` jobs. The API process runs the durable worker; start it normally with Uvicorn after migrations. The UI polls pending jobs, shows validated results or explicit unavailability, and keeps deterministic comparisons available in either case. Interrupted calls become unavailable rather than being silently billed again; retry is an explicit user action.
+Set saves/corrections and completed exercise blocks enqueue private, source-linked `AIInsight` jobs. The API process runs the durable worker when `RUN_AI_WORKER=true` (the default for local development). Production runs it in one separate ECS worker service; web replicas set `RUN_AI_WORKER=false`. Interrupted calls become unavailable rather than being silently billed again; retry is an explicit user action.
 
 Gemini uses the [Interactions API](https://ai.google.dev/gemini-api/docs/interactions-overview) with `store: false`; OpenAI fallback uses [Responses structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), also without provider storage. Configure server-only `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. Defaults are the provider-verified `gemini-3.1-flash-lite` and `gpt-5.6-terra`; model access and quotas still depend on your provider account.
 
@@ -118,3 +121,56 @@ Plan, workout, and meal changes are typed proposals. The client shows exact prop
 ## Administration and announcements
 
 Administrators use `/admin` for server-authorized global exercise and food management, validated AI prompt/progression settings, scheduled announcements, aggregate analytics, health status, and paginated append-only audit history. Admin authorization is enforced by the persisted role on every endpoint. The UI never exposes credentials, provider tokens, or private cross-athlete AI context. Athletes see only currently scheduled public announcements through `/api/v1/announcements`.
+
+## Android installation and offline behavior
+
+KINETIX is an installable PWA. On Android, open the HTTPS site in Chrome, use the browser menu’s **Install app** or **Add to Home screen**, then launch from the home screen. The service worker uses network-first navigation and provides a small offline notice if the site cannot be reached. It caches only versioned frontend assets and public icons; `/api/*`, sign-in responses, and athlete records always go to the network and are never stored for offline use. Sign-in and all athlete features require connectivity.
+
+## AWS rollout and staging capacity test
+
+The AWS deployment target is `ap-south-1`, with a CloudFront HTTPS hostname, ECS Fargate, an Application Load Balancer, and private Multi-AZ PostgreSQL. Provisioning requires owner access to the AWS account and GitHub repository; no public URL or deployment is available until those resources exist. Bootstrap the remote state bucket and GitHub OIDC role from `infra/aws/bootstrap.yml` in AWS CloudShell, then configure the repository’s production environment and staging/production workflow permissions. Never add AWS access keys or application secrets to GitHub variables, Terraform outputs, images, or logs; store application credentials in Secrets Manager.
+
+From a checkout that contains this template, run CloudShell bootstrap; it reuses an account GitHub OIDC provider if present, otherwise the template creates one.
+
+```sh
+oidc_arn="$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?contains(Arn, 'token.actions.githubusercontent.com')].Arn | [0]" --output text)"
+parameters=(GitHubRepository=utsav3097-netizen/kinetix-ai)
+if [ -n "$oidc_arn" ] && [ "$oidc_arn" != "None" ]; then
+  parameters+=(ExistingGitHubOidcProviderArn="$oidc_arn")
+fi
+aws cloudformation deploy \
+  --region ap-south-1 \
+  --template-file infra/aws/bootstrap.yml \
+  --stack-name kinetix-bootstrap \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides "${parameters[@]}"
+aws cloudformation describe-stacks \
+  --region ap-south-1 \
+  --stack-name kinetix-bootstrap \
+  --query 'Stacks[0].Outputs'
+```
+
+Configure repository variable `AWS_ROLE_ARN` from `GitHubDeployRoleArn`, `TF_STATE_BUCKET` from `StateBucket`, and restrict the `production` GitHub environment to deployments from `master` with at least one required reviewer. Bootstrap must be run by an AWS account administrator; it does not deploy application infrastructure.
+Set optional repository variable `ALARM_EMAIL` to a monitored address to create SNS alarm notifications; confirm the SNS subscription email in AWS before relying on delivery.
+
+The first Terraform apply generates database, JWT, and origin-verification credentials in Secrets Manager; sensitive values are retained in the encrypted/versioned Terraform state and are never emitted as outputs. Optional provider API keys can be added to the environment's `kinetix-staging/application` or `kinetix-production/application` secret in Secrets Manager. Terraform preserves manual secret-version edits after creation.
+
+After the production health checks pass, create the first administrator through an interactive ECS Exec session. Replace the cluster, service, and email placeholders with verified deployment values; the CLI prompts for a hidden password, which must not be placed in the command:
+
+```sh
+TASK_ARN="$(aws ecs list-tasks --cluster KINETIX_PRODUCTION_CLUSTER --service-name web --desired-status RUNNING --query 'taskArns[0]' --output text)"
+aws ecs execute-command \
+  --cluster KINETIX_PRODUCTION_CLUSTER \
+  --task "$TASK_ARN" \
+  --container web \
+  --interactive \
+  --command "python -m app.cli create-user ADMIN_EMAIL --role admin"
+```
+
+Once staging is deployed, create one dedicated, fully onboarded staging athlete and run from the repository root:
+
+```sh
+k6 run -e BASE_URL=https://YOUR-STAGING-CLOUDFRONT-HOST -e LOAD_TEST_EMAIL=athlete@example.test -e LOAD_TEST_PASSWORD='your-secret' backend/load/k6_staging.js
+```
+
+The script authenticates once in setup, shares the short-lived bearer token for read-only requests, and ramps to 500 virtual users, holds for 10 minutes, then ramps down. Do not run this workload against production. Accept capacity only when the HTTP failure rate stays below 1%, authenticated API p95 remains under 2 seconds, 5xx/429 responses remain within thresholds, ECS is not pinned at its maximum, and RDS connections remain below the 80% alarm. Check CloudWatch ALB, ECS, and RDS metrics before any tuning. Physical Android installation and offline checks must also be performed against the deployed HTTPS staging URL.

@@ -32,14 +32,18 @@ FRONTEND_DIST = BACKEND_DIR.parent / "frontend" / "dist"
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    # Schema changes are exclusively managed by `alembic upgrade head`.
-    worker = asyncio.create_task(run_worker(SessionLocal, settings), name="kinetix-ai-worker")
+    worker = (
+        asyncio.create_task(run_worker(SessionLocal, settings), name="kinetix-ai-worker")
+        if settings.run_ai_worker
+        else None
+    )
     try:
         yield
     finally:
-        worker.cancel()
-        with suppress(asyncio.CancelledError):
-            await worker
+        if worker is not None:
+            worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await worker
         engine.dispose()
 
 
@@ -73,6 +77,10 @@ app.include_router(coach_router)
 app.include_router(admin_router)
 app.include_router(announcement_router)
 
+
+@app.get("/api/v1/health/live", tags=["health"])
+def health_live():
+    return {"status": "ok"}
 
 @app.get("/api/v1/health", tags=["health"])
 def health(db: Annotated[Session, Depends(get_db)]):

@@ -1,3 +1,6 @@
+import hmac
+import ipaddress
+
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -313,3 +316,37 @@ def test_login_and_registration_are_rate_limited(client, identity, monkeypatch, 
         bucket = db.scalar(select(identity.models.AuthRateBucket).where(identity.models.AuthRateBucket.scope == endpoint))
         bucket.attempts = identity.rates.RATE_LIMITS[endpoint][0]
     assert client.post(f"/api/v1/auth/{endpoint}", json=body).status_code == 429
+
+def test_rate_limit_ignores_untrusted_ip_header_and_requires_trusted_header(client, identity, monkeypatch):
+    body = {"email": "limit-check@example.com", "password": identity.password}
+    assert client.post(
+        "/api/v1/auth/login", json=body, headers={"X-Kinetix-Client-IP": "198.51.100.10"}
+    ).status_code == 401
+    assert client.post(
+        "/api/v1/auth/login", json=body, headers={"X-Kinetix-Client-IP": "203.0.113.20"}
+    ).status_code == 401
+    with identity.sessions() as db:
+        bucket = db.scalar(select(identity.models.AuthRateBucket))
+        assert bucket.attempts == 2
+
+    monkeypatch.setattr(identity.settings, "trusted_client_ip_header", "x-kinetix-client-ip")
+    assert client.post("/api/v1/auth/login", json=body).status_code == 503
+    assert client.post(
+        "/api/v1/auth/login", json=body, headers={"X-Kinetix-Client-IP": "not-an-ip"}
+    ).status_code == 503
+    assert client.post(
+        "/api/v1/auth/login", json=body, headers={"X-Kinetix-Client-IP": "198.51.100.10"}
+    ).status_code == 401
+    peer_ip = str(ipaddress.ip_address("198.51.100.10"))
+    expected_digest = hmac.digest(
+        identity.settings.jwt_secret.get_secret_value().encode(), peer_ip.encode(), "sha256"
+    )
+    expected_slot = int.from_bytes(expected_digest[:4], "big") % identity.rates.RATE_SLOTS
+    with identity.sessions() as db:
+        bucket = db.scalar(
+            select(identity.models.AuthRateBucket).where(
+                identity.models.AuthRateBucket.scope == "login",
+                identity.models.AuthRateBucket.slot == expected_slot,
+            )
+        )
+        assert bucket is not None and bucket.attempts == 1

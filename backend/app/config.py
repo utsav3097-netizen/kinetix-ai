@@ -38,6 +38,25 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
     )
     refresh_cookie_name: str = "kinetix_refresh"
+    db_pool_size: int = Field(default=4, ge=1, le=50)
+    db_max_overflow: int = Field(default=2, ge=0, le=50)
+    db_pool_timeout: int = Field(default=5, ge=1, le=120)
+    run_ai_worker: bool = True
+    trusted_client_ip_header: str | None = None
+
+    @field_validator("trusted_client_ip_header", mode="before")
+    @classmethod
+    def normalize_trusted_ip_header(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip().lower() or None
+        return value
+
+    @field_validator("trusted_client_ip_header")
+    @classmethod
+    def validate_trusted_ip_header(cls, value: str | None) -> str | None:
+        if value is not None and value != "x-kinetix-client-ip":
+            raise ValueError("TRUSTED_CLIENT_IP_HEADER must be x-kinetix-client-ip")
+        return value
 
     @field_validator("jwt_secret", "gemini_api_key", "openai_api_key", mode="before")
     @classmethod
