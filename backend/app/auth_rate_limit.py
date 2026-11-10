@@ -1,9 +1,11 @@
 """Database-atomic fixed-window limits shared by every API worker.
 
 Each endpoint has 4,096 persistent hash slots: storage is capped at 12,288 rows.
-Colliding clients share a limit conservatively, and slots reset in place. Only the
-socket peer address is used; untrusted forwarding headers cannot evade limits.
+Colliding clients share a limit conservatively, and slots reset in place. The
+socket peer is used unless a specifically trusted, validated client-IP header is configured.
 """
+
+import ipaddress
 
 import hmac
 from collections.abc import Callable
@@ -29,7 +31,16 @@ def rate_limit(scope: str) -> Callable:
         now = utc_now()
         timestamp = int(now.timestamp())
         window_start = timestamp - timestamp % window_seconds
-        peer = request.client.host if request.client is not None else "unknown"
+        if settings.trusted_client_ip_header:
+            header_value = request.headers.get(settings.trusted_client_ip_header)
+            try:
+                peer = str(ipaddress.ip_address(header_value)) if header_value else None
+            except ValueError:
+                peer = None
+            if peer is None:
+                raise HTTPException(status_code=503, detail="Trusted client IP is unavailable")
+        else:
+            peer = request.client.host if request.client is not None else "unknown"
         digest = hmac.digest(settings.jwt_secret.get_secret_value().encode(), peer.encode(), "sha256")
         slot = int.from_bytes(digest[:4], "big") % RATE_SLOTS
         insert = postgres_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert

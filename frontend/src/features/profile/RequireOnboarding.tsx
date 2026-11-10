@@ -1,4 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { useProfile } from './profile';
 
 export function ProfileRequestState({ error, retry }: { error?: Error | null; retry: () => void }) {
@@ -14,12 +15,12 @@ export function ProfileRequestState({ error, retry }: { error?: Error | null; re
 }
 
 /** Nest tracking and planning routes inside this authenticated navigation boundary. */
-export function RequireOnboarding() {
+export function RequireOnboarding({ children }: { children?: ReactNode } = {}) {
   const profile = useProfile();
   if (profile.isPending || profile.isError) {
     return <ProfileRequestState error={profile.error} retry={() => void profile.refetch()} />;
   }
   return profile.data.onboarding_complete && profile.data.profile
-    ? <Outlet />
+    ? <>{children ?? <Outlet />}</>
     : <Navigate to="/onboarding" replace />;
 }

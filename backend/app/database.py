@@ -11,11 +11,16 @@ class Base(DeclarativeBase):
 
 
 is_sqlite = settings.database_url.startswith("sqlite:")
-engine = create_engine(
-    settings.database_url,
-    pool_pre_ping=True,
-    connect_args={"check_same_thread": False} if is_sqlite else {},
-)
+engine_options = {"pool_pre_ping": True}
+if is_sqlite:
+    engine_options["connect_args"] = {"check_same_thread": False}
+else:
+    engine_options.update(
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout,
+    )
+engine = create_engine(settings.database_url, **engine_options)
 
 if is_sqlite:
     @event.listens_for(engine, "connect")

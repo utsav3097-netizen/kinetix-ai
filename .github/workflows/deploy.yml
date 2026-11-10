@@ -1,0 +1,240 @@
+name: KINETIX AWS release
+
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+    inputs:
+      staging_run_id:
+        description: Successful master workflow run ID that published and deployed the image digest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kinetix-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  verify:
+    name: Verify source changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: npm ci && npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Run backend tests
+        working-directory: backend
+        run: python -m pytest tests -q
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.0"
+      - name: Check Terraform formatting
+        working-directory: infra/aws/terraform
+        run: terraform fmt -check -recursive
+      - name: Validate Terraform
+        working-directory: infra/aws/terraform
+        run: terraform init -backend=false -input=false && terraform validate
+      - name: Dependency security audit
+        run: |
+          npm audit --prefix frontend --audit-level=high
+          python -m pip install pip-audit cfn-lint
+          cfn-lint infra/aws/bootstrap.yml
+          pip-audit -r backend/requirements.txt
+
+  publish-staging:
+    name: Publish and deploy staging
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.0"
+      - name: Initialize staging state
+        working-directory: infra/aws/terraform
+        run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=staging/terraform.tfstate" -backend-config="region=${AWS_REGION}" -backend-config="encrypt=true" -backend-config="use_lockfile=true"
+      - name: Build image
+        run: docker build --pull --tag kinetix:${GITHUB_SHA} .
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Push immutable staging image
+        id: push
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          registry="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          release_tag="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker tag "kinetix:${GITHUB_SHA}" "${registry}/kinetix:${release_tag}"
+          docker push "${registry}/kinetix:${release_tag}"
+          digest="$(aws ecr describe-images --repository-name kinetix --image-ids imageTag="${release_tag}" --query 'imageDetails[0].imageDigest' --output text)"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Register task definitions and provision prerequisites
+        working-directory: infra/aws/terraform
+        env:
+          TF_VAR_environment: staging
+          TF_VAR_image_digest: ${{ steps.push.outputs.digest }}
+          TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }}
+        run: terraform apply -input=false -auto-approve -target=aws_ecs_task_definition.web -target=aws_ecs_task_definition.worker -target=aws_ecs_task_definition.migration -target=aws_ecs_cluster.main -target=aws_route_table_association.private -target=aws_security_group.tasks -target=aws_nat_gateway.main
+      - name: Run staging migrations and seed
+        run: |
+          cluster="$(terraform -chdir=infra/aws/terraform output -raw cluster_name)"
+          task_definition="$(terraform -chdir=infra/aws/terraform output -raw migration_task_definition_arn)"
+          subnets="$(terraform -chdir=infra/aws/terraform output -json migration_subnet_ids | jq -r 'join(",")')"
+          security_group="$(terraform -chdir=infra/aws/terraform output -raw task_security_group_id)"
+          task_arn="$(aws ecs run-task --cluster "$cluster" --task-definition "$task_definition" --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$security_group],assignPublicIp=DISABLED}" --query 'tasks[0].taskArn' --output text)"
+          test "$task_arn" != "None"
+          aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task_arn"
+          exit_code="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)"
+          test "$exit_code" = "0"
+      - name: Apply staging infrastructure after migration
+        working-directory: infra/aws/terraform
+        env:
+          TF_VAR_environment: staging
+          TF_VAR_image_digest: ${{ steps.push.outputs.digest }}
+          TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }}
+        run: terraform apply -input=false -auto-approve
+      - name: Roll out staging services
+        run: |
+          cluster="$(terraform -chdir=infra/aws/terraform output -raw cluster_name)"
+          web="$(terraform -chdir=infra/aws/terraform output -raw web_service_name)"
+          worker="$(terraform -chdir=infra/aws/terraform output -raw worker_service_name)"
+          web_task_definition="$(terraform -chdir=infra/aws/terraform output -raw web_task_definition_arn)"
+          worker_task_definition="$(terraform -chdir=infra/aws/terraform output -raw worker_task_definition_arn)"
+          aws ecs update-service --cluster "$cluster" --service "$web" --task-definition "$web_task_definition" >/dev/null
+          aws ecs update-service --cluster "$cluster" --service "$worker" --task-definition "$worker_task_definition" >/dev/null
+          aws ecs wait services-stable --cluster "$cluster" --services "$web" "$worker"
+      - name: Verify staging targets and application health
+        run: |
+          target_group="$(terraform -chdir=infra/aws/terraform output -raw target_group_arn)"
+          base_url="$(terraform -chdir=infra/aws/terraform output -raw cloudfront_url)"
+          for attempt in $(seq 1 60); do
+            healthy="$(aws elbv2 describe-target-health --target-group-arn "$target_group" --query 'length(TargetHealthDescriptions[?TargetHealth.State==`healthy`])' --output text)"
+            if [ "$healthy" -ge 2 ] && curl --fail --silent "${base_url}/api/v1/health/live" >/dev/null && curl --fail --silent "${base_url}/api/v1/health" >/dev/null; then exit 0; fi
+            sleep 10
+          done
+          exit 1
+      - name: Save immutable image digest
+        run: printf '%s\n' '${{ steps.push.outputs.digest }}' > image-digest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kinetix-staged-image-digest
+          path: image-digest.txt
+          retention-days: 90
+
+  deploy-production:
+    name: Manually deploy staged image to production
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
+    environment:
+      name: production
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+      - name: Confirm artifact came from a successful master staging run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.staging_run_id }}
+        run: |
+          metadata="$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json headBranch,event,conclusion,workflowName)"
+          jq -e '.headBranch == "master" and .event == "push" and .conclusion == "success" and .workflowName == "KINETIX AWS release"' <<< "$metadata" >/dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          name: kinetix-staged-image-digest
+          run-id: ${{ inputs.staging_run_id }}
+          github-token: ${{ github.token }}
+      - name: Validate staged digest
+        id: digest
+        run: |
+          digest="$(cat image-digest.txt)"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "value=$digest" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.0"
+      - name: Initialize production state
+        working-directory: infra/aws/terraform
+        run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=production/terraform.tfstate" -backend-config="region=${AWS_REGION}" -backend-config="encrypt=true" -backend-config="use_lockfile=true"
+      - name: Register production migration task and provision prerequisites
+        working-directory: infra/aws/terraform
+        env:
+          TF_VAR_environment: production
+          TF_VAR_image_digest: ${{ steps.digest.outputs.value }}
+          TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }}
+        run: terraform apply -input=false -auto-approve -target=aws_ecs_task_definition.web -target=aws_ecs_task_definition.worker -target=aws_ecs_task_definition.migration -target=aws_ecs_cluster.main -target=aws_route_table_association.private -target=aws_security_group.tasks -target=aws_nat_gateway.main
+      - name: Run production migrations and seed
+        run: |
+          cluster="$(terraform -chdir=infra/aws/terraform output -raw cluster_name)"
+          task_definition="$(terraform -chdir=infra/aws/terraform output -raw migration_task_definition_arn)"
+          subnets="$(terraform -chdir=infra/aws/terraform output -json migration_subnet_ids | jq -r 'join(",")')"
+          security_group="$(terraform -chdir=infra/aws/terraform output -raw task_security_group_id)"
+          task_arn="$(aws ecs run-task --cluster "$cluster" --task-definition "$task_definition" --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$security_group],assignPublicIp=DISABLED}" --query 'tasks[0].taskArn' --output text)"
+          test "$task_arn" != "None"
+          aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task_arn"
+          exit_code="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)"
+          test "$exit_code" = "0"
+      - name: Apply production infrastructure after migration
+        working-directory: infra/aws/terraform
+        env:
+          TF_VAR_environment: production
+          TF_VAR_image_digest: ${{ steps.digest.outputs.value }}
+          TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }}
+        run: terraform apply -input=false -auto-approve
+      - name: Roll out production services
+        run: |
+          cluster="$(terraform -chdir=infra/aws/terraform output -raw cluster_name)"
+          web="$(terraform -chdir=infra/aws/terraform output -raw web_service_name)"
+          worker="$(terraform -chdir=infra/aws/terraform output -raw worker_service_name)"
+          web_task_definition="$(terraform -chdir=infra/aws/terraform output -raw web_task_definition_arn)"
+          worker_task_definition="$(terraform -chdir=infra/aws/terraform output -raw worker_task_definition_arn)"
+          aws ecs update-service --cluster "$cluster" --service "$web" --task-definition "$web_task_definition" >/dev/null
+          aws ecs update-service --cluster "$cluster" --service "$worker" --task-definition "$worker_task_definition" >/dev/null
+          aws ecs wait services-stable --cluster "$cluster" --services "$web" "$worker"
+      - name: Verify production targets and application health
+        run: |
+          target_group="$(terraform -chdir=infra/aws/terraform output -raw target_group_arn)"
+          base_url="$(terraform -chdir=infra/aws/terraform output -raw cloudfront_url)"
+          for attempt in $(seq 1 60); do
+            healthy="$(aws elbv2 describe-target-health --target-group-arn "$target_group" --query 'length(TargetHealthDescriptions[?TargetHealth.State==`healthy`])' --output text)"
+            if [ "$healthy" -ge 2 ] && curl --fail --silent "${base_url}/api/v1/health/live" >/dev/null && curl --fail --silent "${base_url}/api/v1/health" >/dev/null; then exit 0; fi
+            sleep 10
+          done
+          exit 1

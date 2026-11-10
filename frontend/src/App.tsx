@@ -1,5 +1,6 @@
+import { lazy, Suspense } from 'react';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
-import { Link, NavLink, Route, Routes } from 'react-router-dom';
+import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { ApiHealth } from './components/ApiHealth';
 import { KinetixLogo } from './components/KinetixLogo';
 import { AdminPage } from './features/admin/AdminPage';
@@ -15,6 +16,8 @@ import { WorkoutsPage } from './features/workouts/WorkoutsPage';
 import { NutritionPage } from './features/nutrition/NutritionPage';
 import { ReportsPage } from './features/plans/ReportsPage';
 import { PlansPage } from './features/plans/PlansPage';
+
+const LandingPage = lazy(() => import('./features/landing/LandingPage'));
 
 function SessionStatus() {
   const { loading, initializationError, retryInitialization } = useAuth();
@@ -43,10 +46,11 @@ function SessionStatus() {
 
 export default function App() {
   const { user, loading, initializationError } = useAuth();
+  const location = useLocation();
   const ready = !loading && !initializationError;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${ready && !user && location.pathname === '/' ? ' app-shell--public-root' : ''}`}>
       <a className="skip-link" href="#main-content">Skip to content</a>
       <header className="site-header">
         <Link to="/" className="brand" aria-label="KINETIX AI home">
@@ -57,6 +61,7 @@ export default function App() {
           <nav className="header-nav" aria-label="Main navigation">
             {user ? <><NavLink to="/" end>Dashboard</NavLink><NavLink to="/workouts">Workouts</NavLink><NavLink to="/nutrition">Nutrition</NavLink><NavLink to="/reports">Reports</NavLink><NavLink to="/plans">Plans</NavLink><NavLink to="/onboarding">Profile</NavLink><NavLink to="/library">Library</NavLink>{user.role === 'admin' && <NavLink to="/admin">Admin</NavLink>}</> : (
               <>
+                {location.pathname === '/' && <><a href="#features">Platform</a><a href="#method">Approach</a></>}
                 <NavLink to="/login">Log in</NavLink>
                 <NavLink to="/register">Register</NavLink>
               </>
@@ -66,6 +71,14 @@ export default function App() {
       </header>
       {!ready ? <SessionStatus /> : (
         <Routes>
+          <Route path="/" element={user
+            ? <RequireOnboarding><Dashboard /></RequireOnboarding>
+            : <Suspense fallback={
+              <main id="main-content" className="session-loading" aria-busy="true">
+                <KinetixLogo className="brand-logo" aria-hidden="true" />
+                <p role="status">Loading KINETIX AI…</p>
+              </main>
+            }><LandingPage /></Suspense>} />
           <Route element={<AnonymousRoute />}>
             <Route path="/login" element={<AuthPage key="login" mode="login" />} />
             <Route path="/register" element={<AuthPage key="register" mode="register" />} />
@@ -74,7 +87,6 @@ export default function App() {
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route element={<RequireOnboarding />}>
-              <Route path="/" element={<Dashboard />} />
               <Route path="/library" element={<LibraryPage />} />
               <Route path="/workouts" element={<WorkoutsPage />} />
               <Route path="/nutrition" element={<NutritionPage />} />

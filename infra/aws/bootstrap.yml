@@ -1,0 +1,278 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Encrypted Terraform state and least-privilege GitHub Actions OIDC deployment role for KINETIX.
+Parameters:
+  GitHubRepository:
+    Type: String
+    Default: utsav3097-netizen/kinetix-ai
+  ExistingGitHubOidcProviderArn:
+    Type: String
+    Default: ''
+    Description: Existing token.actions.githubusercontent.com provider ARN, or empty to create it.
+Conditions:
+  CreateGitHubOidcProvider: !Equals [!Ref ExistingGitHubOidcProviderArn, '']
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateGitHubOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: ['6938fd4d98bab03faadb97b34396831e3780aea1']
+  TerraformStateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'kinetix-terraform-state-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  TerraformStateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TerraformStateBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt TerraformStateBucket.Arn
+              - !Sub '${TerraformStateBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+  ApplicationRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: kinetix
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Retain the latest 30 immutable release images",
+              "selection": {"tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": 30},
+              "action": {"type": "expire"}
+            }]
+          }
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: kinetix-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateGitHubOidcProvider
+                - !GetAtt GitHubOidcProvider.Arn
+                - !Ref ExistingGitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub 'repo:${GitHubRepository}:ref:refs/heads/master'
+                  - !Sub 'repo:${GitHubRepository}:environment:production'
+      Policies:
+        - PolicyName: KinetixDeployment
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ecr:GetAuthorizationToken]
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeImages
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/kinetix'
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - ecs:DescribeClusters
+                  - ecs:DescribeServices
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:RunTask
+                  - ecs:UpdateService
+                  - logs:GetLogEvents
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetBucketLocation
+                  - s3:GetBucketVersioning
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt TerraformStateBucket.Arn
+                  - !Sub '${TerraformStateBucket.Arn}/*'
+        - PolicyName: KinetixTerraformProvisioning
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - application-autoscaling:*
+                  - cloudformation:DescribeStacks
+                  - cloudfront:CreateDistribution
+                  - cloudfront:CreateFunction
+                  - cloudfront:DeleteDistribution
+                  - cloudfront:DeleteFunction
+                  - cloudfront:DescribeFunction
+                  - cloudfront:GetCachePolicy
+                  - cloudfront:GetDistribution
+                  - cloudfront:GetDistributionConfig
+                  - cloudfront:GetFunction
+                  - cloudfront:GetOriginRequestPolicy
+                  - cloudfront:ListCachePolicies
+                  - cloudfront:ListDistributions
+                  - cloudfront:ListFunctions
+                  - cloudfront:ListTagsForResource
+                  - cloudfront:ListOriginRequestPolicies
+                  - cloudfront:PublishFunction
+                  - cloudfront:TagResource
+                  - cloudfront:UntagResource
+                  - cloudfront:UpdateDistribution
+                  - cloudfront:UpdateFunction
+                  - cloudwatch:*
+                  - ec2:AssociateRouteTable
+                  - ec2:AttachInternetGateway
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:AllocateAddress
+                  - ec2:CreateInternetGateway
+                  - ec2:CreateNatGateway
+                  - ec2:CreateRoute
+                  - ec2:CreateRouteTable
+                  - ec2:CreateSecurityGroup
+                  - ec2:CreateSubnet
+                  - ec2:CreateTags
+                  - ec2:CreateVpc
+                  - ec2:DeleteInternetGateway
+                  - ec2:DeleteNatGateway
+                  - ec2:DeleteRoute
+                  - ec2:DeleteRouteTable
+                  - ec2:DeleteSecurityGroup
+                  - ec2:DeleteTags
+                  - ec2:DeleteSubnet
+                  - ec2:DeleteVpc
+                  - ec2:Describe*
+                  - ec2:DetachInternetGateway
+                  - ec2:DisassociateRouteTable
+                  - ec2:ModifySubnetAttribute
+                  - ec2:ModifyVpcAttribute
+                  - ec2:ReleaseAddress
+                  - ec2:ReplaceRoute
+                  - ec2:ReplaceRouteTableAssociation
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ecs:*
+                  - elasticloadbalancing:AddTags
+                  - elasticloadbalancing:CreateListener
+                  - elasticloadbalancing:CreateLoadBalancer
+                  - elasticloadbalancing:CreateRule
+                  - elasticloadbalancing:CreateTargetGroup
+                  - elasticloadbalancing:DeleteListener
+                  - elasticloadbalancing:DeleteLoadBalancer
+                  - elasticloadbalancing:DeleteRule
+                  - elasticloadbalancing:DeleteTargetGroup
+                  - elasticloadbalancing:Describe*
+                  - elasticloadbalancing:ModifyListener
+                  - elasticloadbalancing:ModifyLoadBalancerAttributes
+                  - elasticloadbalancing:ModifyRule
+                  - elasticloadbalancing:ModifyTargetGroup
+                  - elasticloadbalancing:ModifyTargetGroupAttributes
+                  - elasticloadbalancing:RemoveTags
+                  - elasticloadbalancing:SetSecurityGroups
+                  - logs:*
+                  - rds:AddTagsToResource
+                  - rds:CreateDBInstance
+                  - rds:CreateDBParameterGroup
+                  - rds:CreateDBSubnetGroup
+                  - rds:DeleteDBInstance
+                  - rds:DeleteDBParameterGroup
+                  - rds:DeleteDBSubnetGroup
+                  - rds:Describe*
+                  - rds:ListTagsForResource
+                  - rds:ModifyDBInstance
+                  - rds:ModifyDBParameterGroup
+                  - rds:ModifyDBSubnetGroup
+                  - rds:RemoveTagsFromResource
+                  - sns:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:GetResourcePolicy
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:ListSecretVersionIds
+                  - secretsmanager:PutSecretValue
+                  - secretsmanager:TagResource
+                  - secretsmanager:UntagResource
+                  - secretsmanager:UpdateSecret
+                Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:kinetix-*'
+              - Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:CreateRole
+                  - iam:CreateServiceLinkedRole
+                  - iam:DeleteRole
+                  - iam:DeleteRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListRolePolicies
+                  - iam:PutRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:UpdateAssumeRolePolicy
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/kinetix-*'
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/*'
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/kinetix-*'
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+Outputs:
+  StateBucket:
+    Value: !Ref TerraformStateBucket
+  GitHubDeployRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn
+  EcrRepositoryUri:
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/kinetix'
+  GitHubOidcProviderArn:
+    Value: !If [CreateGitHubOidcProvider, !GetAtt GitHubOidcProvider.Arn, !Ref ExistingGitHubOidcProviderArn]
