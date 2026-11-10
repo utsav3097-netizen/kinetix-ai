@@ -46,6 +46,8 @@ docker compose up --build -d
 
 The web container does not run schema changes. PostgreSQL is mandatory outside local development. Do not expose the database port. Back up the database volume. The local Compose app keeps the AI queue worker enabled unless `RUN_AI_WORKER=false` is explicitly configured.
 
+PostgreSQL pool defaults are `DB_POOL_SIZE=4`, `DB_MAX_OVERFLOW=2`, and `DB_POOL_TIMEOUT=5` seconds per process. Include every web replica, worker, migration task, and rolling-update overlap in the database connection budget before increasing them. Set `RUN_AI_WORKER=false` on web replicas when a separate worker service is running. `TRUSTED_CLIENT_IP_HEADER` should remain unset unless a trusted proxy overwrites that header; production behind CloudFront uses `x-kinetix-client-ip`.
+
 ## Accounts and administrator bootstrap
 
 From `backend`, run `python -m app.cli create-user YOUR_EMAIL --role admin` before exposing registration publicly. Password entry is hidden and stored only as an Argon2 hash. `ADMIN_EMAIL` grants administrator status to a newly registered matching canonical email; email ownership is not verified, so never publish an unprovisioned administrator address.
