@@ -1,0 +1,58 @@
+import java.net.URI
+
+plugins {
+    id 'com.android.application'
+}
+
+def publicUrl = providers.gradleProperty('KINETIX_PUBLIC_URL').orElse(providers.environmentVariable('KINETIX_PUBLIC_URL')).getOrNull()
+if (!publicUrl) {
+    throw new GradleException('Set KINETIX_PUBLIC_URL to the deployed HTTPS Render URL before building the APK.')
+}
+
+def appUri
+try {
+    appUri = new URI(publicUrl)
+} catch (Exception exception) {
+    throw new GradleException('KINETIX_PUBLIC_URL must be an HTTPS origin.', exception)
+}
+if (appUri.scheme != 'https' || !appUri.host || appUri.userInfo || appUri.query || appUri.fragment || !(appUri.path in ['', '/'])) {
+    throw new GradleException('KINETIX_PUBLIC_URL must be an HTTPS origin without credentials, path, query, or fragment.')
+}
+def appOrigin = "https://${appUri.host}${appUri.port == -1 || appUri.port == 443 ? '' : ':' + appUri.port}"
+def apkVersionCode = providers.gradleProperty('KINETIX_VERSION_CODE').orElse('1').get()
+if (!(apkVersionCode ==~ /[1-9][0-9]{0,8}/)) {
+    throw new GradleException('KINETIX_VERSION_CODE must be a positive integer below one billion.')
+}
+if (!appUri.host.toLowerCase(Locale.ROOT).endsWith('.onrender.com')) {
+    throw new GradleException('KINETIX_PUBLIC_URL must use the deployed Render HTTPS hostname.')
+}
+
+
+def escapedOrigin = appOrigin.replace('\\', '\\\\').replace('"', '\\"')
+
+android {
+    namespace 'com.kinetixai.mobile'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.kinetixai.mobile'
+        minSdk 24
+        targetSdk 34
+        versionCode apkVersionCode.toInteger()
+        versionName "1.0.${apkVersionCode}"
+        buildConfigField 'String', 'KINETIX_PUBLIC_URL', '"' + escapedOrigin + '"'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
