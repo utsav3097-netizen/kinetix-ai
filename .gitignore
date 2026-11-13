@@ -7,3 +7,8 @@ __pycache__/
 node_modules/
 frontend/dist/
 .terraform/
+android/.gradle/
+android/local.properties
+android/**/build/
+*.jks
+*.keystore
