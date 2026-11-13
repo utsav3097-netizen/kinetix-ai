@@ -53,16 +53,19 @@ jobs:
       - name: Validate Terraform
         working-directory: infra/aws/terraform
         run: terraform init -backend=false -input=false && terraform validate
+      - name: Build and inspect deployment image
+        run: bash scripts/verify-container-image.sh
+
       - name: Dependency security audit
         run: |
           npm audit --prefix frontend --audit-level=high
-          python -m pip install pip-audit cfn-lint
-          cfn-lint infra/aws/bootstrap.yml
+          python -m pip install pip-audit cfn-lint jsonschema pyyaml
+          python scripts/validate_render_blueprint.py
           pip-audit -r backend/requirements.txt
 
   publish-staging:
     name: Publish and deploy staging
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && vars.AWS_ROLE_ARN != '' && vars.TF_STATE_BUCKET != ''
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -153,7 +156,7 @@ jobs:
 
   deploy-production:
     name: Manually deploy staged image to production
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && vars.AWS_ROLE_ARN != '' && vars.TF_STATE_BUCKET != ''
     environment:
       name: production
     runs-on: ubuntu-latest
