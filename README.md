@@ -124,55 +124,13 @@ Plan, workout, and meal changes are typed proposals. The client shows exact prop
 
 Administrators use `/admin` for server-authorized global exercise and food management, validated AI prompt/progression settings, scheduled announcements, aggregate analytics, health status, and paginated append-only audit history. Admin authorization is enforced by the persisted role on every endpoint. The UI never exposes credentials, provider tokens, or private cross-athlete AI context. Athletes see only currently scheduled public announcements through `/api/v1/announcements`.
 
-## Android installation and offline behavior
+## Android APK and Render hosting (no AWS required)
 
-KINETIX is an installable PWA. On Android, open the HTTPS site in Chrome, use the browser menu’s **Install app** or **Add to Home screen**, then launch from the home screen. The service worker uses network-first navigation and provides a small offline notice if the site cannot be reached. It caches only versioned frontend assets and public icons; `/api/*`, sign-in responses, and athlete records always go to the network and are never stored for offline use. Sign-in and all athlete features require connectivity.
+The Render Blueprint is the non-AWS deployment path. It uses paid web, worker, and PostgreSQL plans; autoscaling requires a Render Pro workspace. It binds the existing single-origin app so the APK's WebView, API, and secure refresh cookie share one HTTPS origin.
 
-## AWS rollout and staging capacity test
+- [Render deployment and account setup](docs/render-deployment.md)
+- [APK build, download, and Android installation](docs/android-apk.md)
+- [500-VU staging acceptance](docs/load-testing.md)
+- [Render operations and release checks](docs/render-operations.md)
 
-The AWS deployment target is `ap-south-1`, with a CloudFront HTTPS hostname, ECS Fargate, an Application Load Balancer, and private Multi-AZ PostgreSQL. Provisioning requires owner access to the AWS account and GitHub repository; no public URL or deployment is available until those resources exist. Bootstrap the remote state bucket and GitHub OIDC role from `infra/aws/bootstrap.yml` in AWS CloudShell, then configure the repository’s production environment and staging/production workflow permissions. Never add AWS access keys or application secrets to GitHub variables, Terraform outputs, images, or logs; store application credentials in Secrets Manager.
-
-From a checkout that contains this template, run CloudShell bootstrap; it reuses an account GitHub OIDC provider if present, otherwise the template creates one.
-
-```sh
-oidc_arn="$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?contains(Arn, 'token.actions.githubusercontent.com')].Arn | [0]" --output text)"
-parameters=(GitHubRepository=utsav3097-netizen/kinetix-ai)
-if [ -n "$oidc_arn" ] && [ "$oidc_arn" != "None" ]; then
-  parameters+=(ExistingGitHubOidcProviderArn="$oidc_arn")
-fi
-aws cloudformation deploy \
-  --region ap-south-1 \
-  --template-file infra/aws/bootstrap.yml \
-  --stack-name kinetix-bootstrap \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides "${parameters[@]}"
-aws cloudformation describe-stacks \
-  --region ap-south-1 \
-  --stack-name kinetix-bootstrap \
-  --query 'Stacks[0].Outputs'
-```
-
-Configure repository variable `AWS_ROLE_ARN` from `GitHubDeployRoleArn`, `TF_STATE_BUCKET` from `StateBucket`, and restrict the `production` GitHub environment to deployments from `master` with at least one required reviewer. Bootstrap must be run by an AWS account administrator; it does not deploy application infrastructure.
-Set optional repository variable `ALARM_EMAIL` to a monitored address to create SNS alarm notifications; confirm the SNS subscription email in AWS before relying on delivery.
-
-The first Terraform apply generates database, JWT, and origin-verification credentials in Secrets Manager; sensitive values are retained in the encrypted/versioned Terraform state and are never emitted as outputs. Optional provider API keys can be added to the environment's `kinetix-staging/application` or `kinetix-production/application` secret in Secrets Manager. Terraform preserves manual secret-version edits after creation.
-
-After the production health checks pass, create the first administrator through an interactive ECS Exec session. Replace the cluster, service, and email placeholders with verified deployment values; the CLI prompts for a hidden password, which must not be placed in the command:
-
-```sh
-TASK_ARN="$(aws ecs list-tasks --cluster KINETIX_PRODUCTION_CLUSTER --service-name web --desired-status RUNNING --query 'taskArns[0]' --output text)"
-aws ecs execute-command \
-  --cluster KINETIX_PRODUCTION_CLUSTER \
-  --task "$TASK_ARN" \
-  --container web \
-  --interactive \
-  --command "python -m app.cli create-user ADMIN_EMAIL --role admin"
-```
-
-Once staging is deployed, create one dedicated, fully onboarded staging athlete and run from the repository root:
-
-```sh
-k6 run -e BASE_URL=https://YOUR-STAGING-CLOUDFRONT-HOST -e LOAD_TEST_EMAIL=athlete@example.test -e LOAD_TEST_PASSWORD='your-secret' backend/load/k6_staging.js
-```
-
-The script authenticates once in setup, shares the short-lived bearer token for read-only requests, and ramps to 500 virtual users, holds for 10 minutes, then ramps down. Do not run this workload against production. Accept capacity only when the HTTP failure rate stays below 1%, authenticated API p95 remains under 2 seconds, 5xx/429 responses remain within thresholds, ECS is not pinned at its maximum, and RDS connections remain below the 80% alarm. Check CloudWatch ALB, ECS, and RDS metrics before any tuning. Physical Android installation and offline checks must also be performed against the deployed HTTPS staging URL.
+The generated Render HTTPS origin is required before the APK can run. Render deployment, billing approval, Android installation, and the 500-VU run have not been performed from this repository environment.
