@@ -9,25 +9,25 @@ import org.junit.Test;
 public final class KinetixOriginTest {
     @Test
     public void allowsOnlyTheConfiguredHttpsOrigin() {
-        KinetixOrigin origin = new KinetixOrigin("https://kinetix-web.onrender.com");
+        KinetixOrigin origin = new KinetixOrigin("https://kinetix-ai-fitness-web.onrender.com");
 
-        assertTrue(origin.allows("https://kinetix-web.onrender.com/login"));
-        assertTrue(origin.allows("https://KINETIX-WEB.ONRENDER.COM/api/v1/auth/refresh"));
-        assertFalse(origin.allows("http://kinetix-web.onrender.com/login"));
+        assertTrue(origin.allows("https://kinetix-ai-fitness-web.onrender.com/login"));
+        assertTrue(origin.allows("https://KINETIX-AI-FITNESS-WEB.ONRENDER.COM/api/v1/auth/refresh"));
+        assertFalse(origin.allows("http://kinetix-ai-fitness-web.onrender.com/login"));
         assertFalse(origin.allows("https://attacker.onrender.com/login"));
-        assertFalse(origin.allows("https://kinetix-web.onrender.com.evil.test/login"));
-        assertFalse(origin.allows("https://user@kinetix-web.onrender.com/login"));
-        assertFalse(origin.allows("https://kinetix-web.onrender.com:444/login"));
+        assertFalse(origin.allows("https://kinetix-ai-fitness-web.onrender.com.evil.test/login"));
+        assertFalse(origin.allows("https://user@kinetix-ai-fitness-web.onrender.com/login"));
+        assertFalse(origin.allows("https://kinetix-ai-fitness-web.onrender.com:444/login"));
     }
 
     @Test
     public void configuredOriginMustBeAnOnrenderHttpsOrigin() {
         for (String invalid : new String[]{
-                "http://kinetix-web.onrender.com",
+                "http://kinetix-ai-fitness-web.onrender.com",
                 "https://example.com",
-                "https://user@kinetix-web.onrender.com",
-                "https://kinetix-web.onrender.com/app",
-                "https://kinetix-web.onrender.com?next=other"
+                "https://user@kinetix-ai-fitness-web.onrender.com",
+                "https://kinetix-ai-fitness-web.onrender.com/app",
+                "https://kinetix-ai-fitness-web.onrender.com?next=other"
         }) {
             try {
                 new KinetixOrigin(invalid);
