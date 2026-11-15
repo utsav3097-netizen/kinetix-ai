@@ -2,6 +2,8 @@
 
 This Blueprint deploys KINETIX without AWS or a payment card. It uses one Free Render web service and one Free PostgreSQL database. This is a disposable demo, not production hosting:
 
+The current demo is deployed at `https://kinetix-ai-fitness-web.onrender.com`; both `/api/v1/health/live` and `/api/v1/health` returned `200`.
+
 - Render spins down a Free web service after 15 minutes without traffic; the next request can wait about a minute for startup.
 - Free PostgreSQL is limited to 1 GB, has no backups, and expires 30 days after creation. After its 14-day upgrade grace period, Render deletes the database and its data.
 - Free services cannot autoscale, run background-worker services, or use Render Shell/one-off jobs. The app runs its AI worker in the single web process.
