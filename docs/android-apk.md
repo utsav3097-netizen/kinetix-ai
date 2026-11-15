@@ -2,11 +2,13 @@
 
 The APK is a native WebView shell that opens the deployed Render HTTPS origin. HTML, API requests, login, and the `Secure; HttpOnly; SameSite=Lax` refresh cookie stay on the same origin. The APK does not bundle athlete data or cache private API responses.
 
-1. Deploy the Render Blueprint and copy the exact web-service HTTPS origin from the Render dashboard.
-2. In GitHub, open **Actions → Build KINETIX Android APK → Run workflow** and enter that origin as `app_url`.
-3. Download the `kinetix-android-apk` artifact from the completed workflow and extract `app-debug.apk`.
-4. On Android, allow installation from the browser or file manager used to download the APK, install it, and sign in.
-5. Force-close and reopen the app to verify refresh-cookie session restoration. Disable networking and verify the explicit offline message. Private records remain online-only.
+The current free demo is deployed at `https://kinetix-ai-fitness-web.onrender.com`.
+
+1. Download the [current APK](https://github.com/utsav3097-netizen/kinetix-ai/releases/download/kinetix-android-demo-1/app-debug.apk) to your phone.
+2. Allow installation from the browser or file manager used to download it, then install `app-debug.apk`.
+3. Open KINETIX AI and sign in. Force-close and reopen to check refresh-cookie restoration. Disable networking to check the offline message; private records remain online-only.
+
+For a future APK after the Render hostname changes, open **Actions → Build KINETIX Android APK → Run workflow**, enter the exact HTTPS origin as `app_url`, and download the `kinetix-android-apk` artifact from the completed run.
 
 The Android project targets API 34+ with a minimum API 24. It permits only the configured HTTPS `*.onrender.com` host in the WebView, opens external HTTPS/mail links in the browser, disables cleartext and third-party cookies, and flushes first-party cookies when the app pauses.
 
