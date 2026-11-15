@@ -126,11 +126,13 @@ Administrators use `/admin` for server-authorized global exercise and food manag
 
 ## Android APK and Render hosting (no AWS required)
 
-The Render Blueprint is a temporary non-AWS free demo; it keeps the web app and API on one HTTPS origin for the Android WebView. The Free web service sleeps when idle, and its Free PostgreSQL database expires after 30 days and has no backups. Do not store real athlete records there.
+The temporary Render free demo is live at **https://kinetix-ai-fitness-web.onrender.com**. Its web service sleeps when idle, and its 1 GB PostgreSQL database expires after 30 days with no backups. Do not store real athlete records.
 
-- [Render deployment and account setup](docs/render-deployment.md)
-- [APK build, download, and Android installation](docs/android-apk.md)
-- [500-VU staging acceptance](docs/load-testing.md)
-- [Render operations and release checks](docs/render-operations.md)
+**Download the sideloadable APK:** [app-debug.apk](https://github.com/utsav3097-netizen/kinetix-ai/releases/download/kinetix-android-demo-1/app-debug.apk). Install it on Android, allow the download source to install apps, and sign in. The app requires network access; private records are never cached.
 
-The Render account has not provisioned this Blueprint, so there is no deployed HTTPS origin or working APK artifact yet. Create the Blueprint from Render's dashboard first, then run the APK workflow with its exact origin. The Free plan cannot satisfy the 500-VU production acceptance test; upgrade before attempting that test.
+- [Render free-demo setup and limits](docs/render-deployment.md)
+- [APK installation and updates](docs/android-apk.md)
+- [500-VU load test procedure](docs/load-testing.md)
+- [Render operations](docs/render-operations.md)
+
+The service health and database-readiness endpoints returned `200` after deployment. Physical Android installation, session restoration, offline behavior, and the 500-VU test remain unverified. The Free plan cannot satisfy the 500-VU production acceptance gate.
