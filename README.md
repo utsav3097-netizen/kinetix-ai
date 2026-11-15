@@ -126,11 +126,11 @@ Administrators use `/admin` for server-authorized global exercise and food manag
 
 ## Android APK and Render hosting (no AWS required)
 
-The Render Blueprint is the non-AWS deployment path. It uses paid web, worker, and PostgreSQL plans; autoscaling requires a Render Pro workspace. It binds the existing single-origin app so the APK's WebView, API, and secure refresh cookie share one HTTPS origin.
+The Render Blueprint is a temporary non-AWS free demo; it keeps the web app and API on one HTTPS origin for the Android WebView. The Free web service sleeps when idle, and its Free PostgreSQL database expires after 30 days and has no backups. Do not store real athlete records there.
 
 - [Render deployment and account setup](docs/render-deployment.md)
 - [APK build, download, and Android installation](docs/android-apk.md)
 - [500-VU staging acceptance](docs/load-testing.md)
 - [Render operations and release checks](docs/render-operations.md)
 
-The generated Render HTTPS origin is required before the APK can run. Render deployment, billing approval, Android installation, and the 500-VU run have not been performed from this repository environment.
+The Render account has not provisioned this Blueprint, so there is no deployed HTTPS origin or working APK artifact yet. Create the Blueprint from Render's dashboard first, then run the APK workflow with its exact origin. The Free plan cannot satisfy the 500-VU production acceptance test; upgrade before attempting that test.
