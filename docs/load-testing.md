@@ -1,5 +1,7 @@
 # Render staging capacity test
 
+The temporary Free Render demo is not sized for 500 VUs and its database expires after 30 days. Upgrade to paid web/Postgres/worker plans, use a Pro workspace for autoscaling, and create a separate staging database before running this acceptance test.
+
 Use a dedicated, fully onboarded staging athlete with no real production records. Run from the repository root:
 
 ```sh
